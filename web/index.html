@@ -297,8 +297,31 @@ async function pdfText(file) {
   return out;
 }
 
+// ── Google Argentina parser (FCA0011 local invoices) ─────────────────────────
+function parseGoogleArgentina(text, fname) {
+  const inv = { plataforma:'Google', lineas:[], esArgentina:true };
+  const nm = text.match(/N[°º]0011\s*[-–]\s*(\d+)/);
+  inv.numero = nm ? `FCA0011-${nm[1]}` : fname.replace('.pdf','');
+  const ref = text.match(/N[úu]mero de documento:\s*(\d+)/);
+  inv.refNumero = ref ? ref[1] : null;
+  const isDV360 = /Display\s+and\s+Video\s+360/i.test(text);
+  inv.subcategoria = isDV360 ? 'DV360' : 'CM360';
+  const sm = text.match(/Medio de Pago Subtotal:\s*([\d.]+,\d{2})/);
+  inv.subtotal = sm ? pNum(sm[1]) : 0;
+  inv.anunciante = 'Pendiente cruce';
+  inv.costoMediosTotal = inv.subtotal;
+  inv.techFeeTotal = 0; inv.iibb = 0;
+  const svcLabel = isDV360 ? 'DV360' : 'CM360';
+  inv.lineas = [{ formato: isDV360 ? 'Costo de medios' : 'Adserving', amount:inv.subtotal, advertiser:'Pendiente cruce', campaign:`Servicios Google ${svcLabel}` }];
+  console.log(`[ARG] ${inv.numero} → ref=${inv.refNumero} subtotal=${inv.subtotal} sub=${inv.subcategoria}`);
+  return inv;
+}
+
 // ── Google parser ─────────────────────────────────────────────────────────────
 function parseGoogle(text, fname) {
+  // Detect Google Argentina S.R.L. local invoices
+  if (text.includes('GOOGLE ARGENTINA S.R.L.')) return parseGoogleArgentina(text, fname);
+
   const inv = { plataforma:'Google', lineas:[] };
   const nm = text.match(/N[úu]mero de documento[:\s.]+(\d+)/);
   inv.numero = nm ? nm[1] : fname.replace('.pdf','');
@@ -449,7 +472,7 @@ async function processAll() {
       else inv = { plataforma:'Desconocido', numero:file.name, anunciante:'?', subtotal:0, subcategoria:'', lineas:[], costoMediosTotal:0, techFeeTotal:0 };
 
       // Enrich DV360 with Spent breakdown
-      if (inv.subcategoria==='DV360' && spent[inv.anunciante]) {
+      if (inv.subcategoria==='DV360' && !inv.esArgentina && spent[inv.anunciante]) {
         inv.lineas = spent[inv.anunciante];
       }
       invoices.push(inv);
@@ -458,6 +481,17 @@ async function processAll() {
       invoices.push({ plataforma:'Error', numero:file.name, anunciante:'?', subtotal:0, subcategoria:'', lineas:[], costoMediosTotal:0, techFeeTotal:0 });
     }
   }
+
+  // Cross-reference Google Argentina invoices with their Google Ireland counterparts
+  const refMap = {};
+  invoices.forEach(inv => { if (inv.numero && !inv.esArgentina && inv.anunciante !== 'Desconocido') refMap[inv.numero] = inv.anunciante; });
+  invoices.forEach(inv => {
+    if (inv.esArgentina && inv.refNumero && refMap[inv.refNumero]) {
+      const a = refMap[inv.refNumero];
+      inv.anunciante = a;
+      inv.lineas.forEach(l => l.advertiser = a);
+    }
+  });
 
   setProgress(85, 'Generando Excel…');
   excelBuf = await generateExcel(invoices);
