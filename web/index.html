@@ -315,14 +315,14 @@ function parseGoogleArgentina(text, fname) {
   inv.refNumero = ref ? ref[1] : null;
   const isDV360 = /Display\s+and\s+Video\s+360/i.test(text);
   inv.subcategoria = isDV360 ? 'DV360' : 'CM360';
-  const sm = text.match(/Medio de Pago Subtotal:\s*([\d.]+,\d{2})/);
+  // Try multiple subtotal patterns (PDF.js may extract text differently)
+  const sm = text.match(/Medio de Pago Subtotal:\s*([\d.]+,\d{2})/)
+           || text.match(/Subtotal\s+([\d.]+,\d{2})(?!\s*%)/);
   inv.subtotal = sm ? pNum(sm[1]) : 0;
-  inv.anunciante = 'Pendiente cruce';
+  inv.anunciante = 'Campaña desconocida';
   inv.costoMediosTotal = inv.subtotal;
   inv.techFeeTotal = 0; inv.iibb = 0;
-  const svcLabel = isDV360 ? 'DV360' : 'CM360';
-  inv.lineas = [{ formato: isDV360 ? 'Costo de medios' : 'Adserving', amount:inv.subtotal, advertiser:'Pendiente cruce', campaign:`Servicios Google ${svcLabel}` }];
-  console.log(`[ARG] ${inv.numero} → ref=${inv.refNumero} subtotal=${inv.subtotal} sub=${inv.subcategoria}`);
+  inv.lineas = [{ formato: isDV360 ? 'Costo de medios' : 'Adserving', amount:inv.subtotal, advertiser:'Campaña desconocida', campaign:'Campaña desconocida' }];
   return inv;
 }
 
@@ -491,25 +491,22 @@ async function processAll() {
     }
   }
 
-  // Cross-reference Google Argentina invoices with their Google Ireland counterparts
-  // 1. Build map from this batch
+  // Enrich Google Argentina invoices with advertiser from cache or same batch
   const refMap = {};
-  invoices.forEach(inv => { if (!inv.esArgentina && inv.numero && inv.anunciante !== 'Desconocido' && inv.anunciante !== 'MultiAnunciante') refMap[inv.numero] = inv.anunciante; });
-  // 2. Merge with persistent cache and save new entries
-  const cache = cacheLoad();
-  Object.assign(refMap, cache, refMap); // batch takes priority over cache
-  cacheSave(refMap);
-  // 3. Resolve FCA0011 advertisers
-  let cruces = 0;
   invoices.forEach(inv => {
-    if (inv.esArgentina && inv.refNumero && refMap[inv.refNumero]) {
-      const a = refMap[inv.refNumero];
+    if (!inv.esArgentina && inv.numero && inv.anunciante !== 'Desconocido' && inv.anunciante !== 'MultiAnunciante')
+      refMap[inv.numero] = inv.anunciante;
+  });
+  const cache = cacheLoad();
+  const fullMap = { ...cache, ...refMap };
+  cacheSave(refMap);
+  invoices.forEach(inv => {
+    if (inv.esArgentina && inv.refNumero && fullMap[inv.refNumero]) {
+      const a = fullMap[inv.refNumero];
       inv.anunciante = a;
-      inv.lineas.forEach(l => l.advertiser = a);
-      cruces++;
+      inv.lineas.forEach(l => { l.advertiser = a; l.campaign = a; });
     }
   });
-  console.log(`Cruce FCA0011: ${cruces} resueltos, ${Object.keys(refMap).length} entradas en caché`);
 
   setProgress(85, 'Generando Excel…');
   excelBuf = await generateExcel(invoices);
