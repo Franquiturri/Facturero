@@ -234,11 +234,12 @@ function adv(s) {
   if (u.includes('ARTESANO') || u.includes('_ART_')) return 'Artesano';
   if (u.includes('RAPIDITAS') || u.includes('_RPD_')) return 'Rapiditas';
   if (u.includes('SALMAS') || u.includes('_SAL_') || u.includes('SLMS')) return 'Salmas';
-  if (u.includes('_FAR_') || u.includes('FARGO') || u.includes('FRGP')) return 'Fargo';
-  if (u.includes('TIA ROSA') || u.includes('TIAROSA')) return 'Tia Rosa';
-  if (u.includes('TAKIS') || u.includes('_TAK_')) return 'Takis';
   if (u.includes('ZENISSIMO')) return 'Salmas';
-  if (u.includes('BIMBO') || u.includes('BACK TO SCHOOL') || u.includes('BBAR') || u.includes('_BIM_BIM_')) return 'Bimbo';
+  if (u.includes('_FAR_') || u.includes('FARGO') || u.includes('FRGP')) return 'Fargo';
+  if (u.includes('TIA ROSA') || u.includes('TIAROSA') || u.includes('_TIA_')) return 'Tia Rosa';
+  if (u.includes('TAKIS') || u.includes('_TAK_')) return 'Takis';
+  if (u.includes('BACK TO SCHOOL') || u.includes('BBAR') || u.includes('_BIM_BIM_')) return 'Bimbo';
+  if (u.includes('BIMBO')) return 'Bimbo';
   return null;
 }
 
@@ -306,12 +307,19 @@ function parseGoogle(text, fname) {
   const sm = text.match(/Subtotal en ARS\s+ARS\s+([\d,]+\.\d{2})/);
   inv.subtotal = sm ? pNum(sm[1]) : 0;
 
-  // Advertiser
+  // Advertiser — busca en campos estructurados primero, luego en todo el texto
   const advSet = new Set();
-  [...text.matchAll(/Anunciante:\s+"?([^",\n]+)"?/g)].forEach(m => { const a=adv(m[1]); if(a) advSet.add(a); });
-  const dvAdv = text.match(/Anunciante:\s+([\w-]+)/);
-  if (dvAdv) { const a=adv(dvAdv[1]); if(a) advSet.add(a); }
-  inv.anunciante = advSet.size>1 ? 'MultiAnunciante' : (advSet.values().next().value || 'Desconocido');
+  [...text.matchAll(/Anunciante:\s*"?([^",\n]{2,60})"?/g)].forEach(m => { const a=adv(m[1]); if(a) advSet.add(a); });
+  [...text.matchAll(/Advertiser:\s*"?([^",\n]{2,60})"?/gi)].forEach(m => { const a=adv(m[1]); if(a) advSet.add(a); });
+  // Fallback: busca el nombre del anunciante en cualquier línea del PDF
+  if (advSet.size === 0) {
+    for (const line of text.split('\n')) {
+      const a = adv(line);
+      if (a) advSet.add(a);
+    }
+  }
+  console.log(`[${fname}] advSet=`, [...advSet], '| subtotal=', inv.subtotal, '| sub=', inv.subcategoria);
+  inv.anunciante = advSet.size > 1 ? 'MultiAnunciante' : (advSet.values().next().value || 'Desconocido');
 
   if (isDV360) {
     const cm = text.match(/Costo de medios[\s\S]{0,200}?(\d{1,3}(?:,\d{3})+\.\d{2})/);
