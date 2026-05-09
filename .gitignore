@@ -1,0 +1,16 @@
+# Facturas y reportes (datos privados/binarios)
+facturas_entrada/
+facturas_procesadas/
+reportes/
+Archivos Real Consumido/
+Spent Google/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# OS
+.DS_Store
+Thumbs.db

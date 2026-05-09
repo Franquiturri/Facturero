@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diferenciador de Facturas — Bimbo Argentina</title>
+<style>
+:root {
+  --primary: #1F4E79; --primary-light: #2E75B6;
+  --google: #E2EFDA; --meta: #D6E4F0; --tiktok: #FFD9E8;
+  --subtotal-bg: #FFF2CC; --total-bg: #FCE4D6;
+  --bg: #f0f4f8; --card: #fff; --border: #e0e0e0;
+  --text: #222; --text-muted: #666;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+header { background: var(--primary); color: #fff; padding: 1.25rem 2rem; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+header h1 { font-size: 1.3rem; font-weight: 600; }
+header p  { font-size: .8rem; opacity: .75; margin-top: .2rem; }
+
+main { max-width: 920px; margin: 1.75rem auto; padding: 0 1rem; display: flex; flex-direction: column; gap: 1.25rem; }
+
+.card { background: var(--card); border-radius: 12px; padding: 1.4rem; box-shadow: 0 2px 8px rgba(0,0,0,.07); border: 1px solid var(--border); }
+.card h2 { font-size: .95rem; color: var(--primary); margin-bottom: 1rem; }
+
+/* Drop zones */
+.zones { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+@media(max-width:600px){ .zones { grid-template-columns:1fr; } }
+
+.zone-label { font-size: .8rem; color: var(--text-muted); margin-bottom: .4rem; }
+
+.drop-zone {
+  border: 2px dashed var(--border); border-radius: 8px; padding: 1.6rem 1rem;
+  text-align: center; cursor: pointer; transition: .2s; background: #fafafa; position: relative;
+}
+.drop-zone input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+.drop-zone:hover, .drop-zone.over { border-color: var(--primary-light); background: #eef5ff; }
+.drop-zone .ico { font-size: 2rem; }
+.drop-zone p  { font-size: .85rem; color: var(--text-muted); margin-top: .3rem; }
+.drop-zone .hint { font-size: .72rem; color: #aaa; }
+
+/* File list */
+#fileList { margin-top: .9rem; display: flex; flex-direction: column; gap: .4rem; }
+.file-item { display:flex; align-items:center; gap:.6rem; padding:.5rem .75rem; background:#f8f8f8; border-radius:6px; font-size:.83rem; border:1px solid #eee; }
+.file-item .name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.file-item .amt  { color:var(--primary); font-weight:600; flex-shrink:0; font-size:.8rem; }
+
+.badge { padding:.15rem .45rem; border-radius:4px; font-size:.68rem; font-weight:700; text-transform:uppercase; flex-shrink:0; }
+.badge.google  { background:var(--google);  color:#2d6a2d; }
+.badge.meta    { background:var(--meta);    color:#1a4a7a; }
+.badge.tiktok  { background:var(--tiktok);  color:#8a1a4a; }
+.badge.spent   { background:#fff3cd;         color:#856404; }
+.badge.pending { background:#f0f0f0;         color:#666; }
+.badge.error   { background:#fde8e8;         color:#9b1c1c; }
+
+/* Buttons */
+.btn { padding:.7rem 1.4rem; border:none; border-radius:8px; font-size:.95rem; font-weight:600; cursor:pointer; transition:.2s; width:100%; justify-content:center; display:flex; align-items:center; gap:.5rem; }
+.btn-primary { background:var(--primary); color:#fff; }
+.btn-primary:hover:not(:disabled) { background:var(--primary-light); }
+.btn-primary:disabled { opacity:.45; cursor:not-allowed; }
+.btn-success { background:#198754; color:#fff; }
+.btn-success:hover { background:#157347; }
+
+/* Progress */
+.prog-bar-bg { background:#e9ecef; border-radius:100px; height:7px; overflow:hidden; margin-bottom:.6rem; }
+.prog-bar    { background:var(--primary-light); height:100%; border-radius:100px; transition:width .3s; }
+.prog-text   { font-size:.83rem; color:var(--text-muted); text-align:center; }
+
+/* Stats */
+.stats { display:grid; grid-template-columns:repeat(3,1fr); gap:.75rem; margin-top:1rem; }
+.stat  { text-align:center; padding:.9rem; background:#f8f9fa; border-radius:8px; }
+.stat-n { font-size:1.7rem; font-weight:700; color:var(--primary); }
+.stat-l { font-size:.72rem; color:var(--text-muted); margin-top:.15rem; }
+
+.hidden { display:none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📊 Diferenciador de Facturas Publicitarias</h1>
+  <p>Google DV360 / CM360 · Meta · TikTok — Bimbo Argentina</p>
+</header>
+
+<main>
+  <!-- Upload -->
+  <div class="card">
+    <h2>📁 Cargar archivos</h2>
+    <div class="zones">
+      <div>
+        <p class="zone-label">Facturas PDF</p>
+        <div class="drop-zone" id="pdfZone">
+          <input type="file" id="pdfInput" multiple accept=".pdf">
+          <div class="ico">📄</div>
+          <p>Arrastrá los PDFs aquí</p>
+          <p class="hint">o hacé clic para seleccionar</p>
+        </div>
+      </div>
+      <div>
+        <p class="zone-label">Spent Google <span style="color:#aaa">(opcional, para desglose DV360)</span></p>
+        <div class="drop-zone" id="spentZone">
+          <input type="file" id="spentInput" accept=".xlsx">
+          <div class="ico">📊</div>
+          <p>Spent por campaign.xlsx</p>
+          <p class="hint">o hacé clic para seleccionar</p>
+        </div>
+      </div>
+    </div>
+    <div id="fileList"></div>
+  </div>
+
+  <button class="btn btn-primary" id="processBtn" disabled onclick="processAll()">⚙️ Procesar Facturas</button>
+
+  <!-- Progress -->
+  <div class="card hidden" id="progressCard">
+    <div class="prog-bar-bg"><div class="prog-bar" id="progBar" style="width:0%"></div></div>
+    <p class="prog-text" id="progText">Iniciando…</p>
+  </div>
+
+  <!-- Results -->
+  <div class="card hidden" id="resultsCard">
+    <h2>✅ Procesamiento completado</h2>
+    <div class="stats" id="statsGrid"></div>
+    <div style="margin-top:1.1rem;">
+      <button class="btn btn-success" onclick="downloadExcel()">⬇️ Descargar Resumen Excel</button>
+    </div>
+  </div>
+</main>
+
+<!-- Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+
+<script>
+// ── PDF.js worker ─────────────────────────────────────────────────────────────
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let pdfFiles = [], spentFile = null, invoices = [], excelBuf = null;
+
+// ── File inputs ───────────────────────────────────────────────────────────────
+document.getElementById('pdfInput').onchange = e => { pdfFiles = [...e.target.files]; renderFiles(); };
+document.getElementById('spentInput').onchange = e => { spentFile = e.target.files[0] || null; renderFiles(); };
+
+['pdfZone','spentZone'].forEach(id => {
+  const z = document.getElementById(id);
+  z.addEventListener('dragover', e => { e.preventDefault(); z.classList.add('over'); });
+  z.addEventListener('dragleave', () => z.classList.remove('over'));
+  z.addEventListener('drop', e => {
+    e.preventDefault(); z.classList.remove('over');
+    const files = [...(e.dataTransfer.files || [])];
+    if (id === 'pdfZone') pdfFiles = files.filter(f => f.name.endsWith('.pdf'));
+    else { const x = files.find(f => f.name.endsWith('.xlsx')); if (x) spentFile = x; }
+    renderFiles();
+  });
+});
+
+function renderFiles() {
+  const list = document.getElementById('fileList');
+  list.innerHTML = '';
+  pdfFiles.forEach(f => list.appendChild(makeFileItem('pending', 'PDF', f.name)));
+  if (spentFile) list.appendChild(makeFileItem('spent', 'Spent', spentFile.name));
+  document.getElementById('processBtn').disabled = pdfFiles.length === 0;
+}
+
+function makeFileItem(badgeClass, badgeText, name, extra = '') {
+  const div = document.createElement('div');
+  div.className = 'file-item';
+  div.innerHTML = `<span class="badge ${badgeClass}">${badgeText}</span><span class="name">${name}</span>${extra ? `<span class="amt">${extra}</span>` : ''}`;
+  return div;
+}
+
+// ── Number parsing ────────────────────────────────────────────────────────────
+function pNum(s) {
+  s = String(s || '').replace(/ARS|\s/g, '').trim();
+  const neg = s.startsWith('-'); s = s.replace(/^-/,'');
+  const ld = s.lastIndexOf('.'), lc = s.lastIndexOf(',');
+  if (lc > ld) s = s.replace(/\./g,'').replace(',','.');
+  else s = s.replace(/,/g,'');
+  const v = parseFloat(s) || 0; return neg ? -v : v;
+}
+
+// ── Advertiser lookup ─────────────────────────────────────────────────────────
+function adv(s) {
+  const u = String(s).toUpperCase();
+  if (u.includes('OROWEAT') || u.includes('_ORO_')) return 'Oroweat';
+  if (u.includes('ARTESANO') || u.includes('_ART_')) return 'Artesano';
+  if (u.includes('RAPIDITAS') || u.includes('_RPD_')) return 'Rapiditas';
+  if (u.includes('SALMAS') || u.includes('_SAL_') || u.includes('SLMS')) return 'Salmas';
+  if (u.includes('_FAR_') || u.includes('FARGO') || u.includes('FRGP')) return 'Fargo';
+  if (u.includes('TIA ROSA') || u.includes('TIAROSA')) return 'Tia Rosa';
+  if (u.includes('TAKIS') || u.includes('_TAK_')) return 'Takis';
+  if (u.includes('ZENISSIMO')) return 'Salmas';
+  if (u.includes('BIMBO') || u.includes('BACK TO SCHOOL') || u.includes('BBAR') || u.includes('_BIM_BIM_')) return 'Bimbo';
+  return null;
+}
+
+// ── Format helpers ────────────────────────────────────────────────────────────
+function metaFmt(c) {
+  const u = c.toUpperCase();
+  if (/-TR(?:[|\s]|$)|_TR_/.test(u)) return 'Meta Tráfico';
+  if (/_AWA_|-AW(?:[|\s]|$)/.test(u)) return 'Meta Awareness';
+  return 'Meta';
+}
+
+function ioFmt(io) {
+  const u = io.toUpperCase();
+  if (u.includes('MASTHEAD')) return 'YouTube Masthead';
+  if (u.includes('TRV') || u.includes('TRUEVIEW') || u.includes('STTV')) return 'YouTube Trueview';
+  if (u.includes('BUM') || u.includes('BUMPER') || u.includes('BUMP')) return 'YouTube Bumper';
+  if ((u.includes('DISPLAY')||u.includes('DISP')) && (u.includes('DV3')||u.includes('D3DP'))) return 'DV360 Display';
+  if (u.includes('YOU')||u.includes('YTID')||u.includes('YTIS')||u.includes('YTMP')) return 'YouTube Trueview';
+  if (u.includes('VID')||u.includes('VIDE')) return 'DV360 Video';
+  return 'DV360 Display';
+}
+
+function techFee(fmt, amount) {
+  const rate = fmt.includes('YouTube') ? 0.032 : 0.085;
+  return Math.round(amount * rate / (1 + rate) * 100) / 100;
+}
+
+function cm360Fmt(desc, unit) {
+  const d = desc.toUpperCase(), u = (unit||'').toUpperCase();
+  if (u==='CPC'||d.includes('CLICS')) return 'Adserving - CPC';
+  if (d.includes('_DD_')||d.includes('_MMD_')||d.includes('DSPL')||d.includes('MEDIOSDIR')||d.includes('DISPLAY')) return 'Adserving Display - CPM';
+  if (d.includes('_VID_')||d.includes('_YT_')||d.includes('_OLV_')||d.includes('YT-')||d.includes('VIDEO')) return 'Adserving Video - CPM';
+  return 'Adserving Display - CPM';
+}
+
+// ── PDF text extraction ───────────────────────────────────────────────────────
+async function pdfText(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+  let out = '';
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const rowMap = new Map();
+    for (const item of content.items) {
+      if (!item.str) continue;
+      const y = Math.round(item.transform[5]);
+      if (!rowMap.has(y)) rowMap.set(y, []);
+      rowMap.get(y).push({ x: item.transform[4], s: item.str });
+    }
+    [...rowMap.keys()].sort((a,b)=>b-a).forEach(y => {
+      out += rowMap.get(y).sort((a,b)=>a.x-b.x).map(i=>i.s).join(' ') + '\n';
+    });
+  }
+  return out;
+}
+
+// ── Google parser ─────────────────────────────────────────────────────────────
+function parseGoogle(text, fname) {
+  const inv = { plataforma:'Google', lineas:[] };
+  const nm = text.match(/N[úu]mero de documento[:\s.]+(\d+)/);
+  inv.numero = nm ? nm[1] : fname.replace('.pdf','');
+  const isDV360 = /Display.{0,10}Video\s*360|DV360/i.test(text);
+  inv.subcategoria = isDV360 ? 'DV360' : 'CM360';
+  const sm = text.match(/Subtotal en ARS\s+ARS\s+([\d,]+\.\d{2})/);
+  inv.subtotal = sm ? pNum(sm[1]) : 0;
+
+  // Advertiser
+  const advSet = new Set();
+  [...text.matchAll(/Anunciante:\s+"?([^",\n]+)"?/g)].forEach(m => { const a=adv(m[1]); if(a) advSet.add(a); });
+  const dvAdv = text.match(/Anunciante:\s+([\w-]+)/);
+  if (dvAdv) { const a=adv(dvAdv[1]); if(a) advSet.add(a); }
+  inv.anunciante = advSet.size>1 ? 'MultiAnunciante' : (advSet.values().next().value || 'Desconocido');
+
+  if (isDV360) {
+    const cm = text.match(/Costo de medios[\s\S]{0,200}?(\d{1,3}(?:,\d{3})+\.\d{2})/);
+    const tm = text.match(/Tarifa de plataforma[\s\S]{0,200}?(\d{1,3}(?:,\d{3})+\.\d{2})/);
+    inv.costoMediosTotal = cm ? pNum(cm[1]) : 0;
+    inv.techFeeTotal     = tm ? pNum(tm[1]) : 0;
+    if (cm) inv.lineas.push({ formato:'Costo de medios', amount:inv.costoMediosTotal, advertiser:inv.anunciante, campaign:inv.anunciante });
+    if (tm) inv.lineas.push({ formato:'Tech Fee',        amount:inv.techFeeTotal,     advertiser:inv.anunciante, campaign:inv.anunciante });
+  } else {
+    // CM360 lines
+    const re = /Anunciante:\s*"([^"]+)"[\s\S]*?Campa[ñn]a:\s*"([^"]+)"[\s\S]*?Cargos:\s*([^\n]+)\s*(CPM|CPC)\s+[\d.]+\s+[\d,]+\s+([\d,]+\.\d{2})/g;
+    for (const m of text.matchAll(re)) {
+      const a = adv(m[1]) || m[1];
+      const fmt = cm360Fmt(m[2]+' '+m[3], m[4]);
+      inv.lineas.push({ formato:fmt, amount:pNum(m[5]), advertiser:a, campaign:m[2] });
+    }
+    inv.costoMediosTotal = 0; inv.techFeeTotal = 0;
+  }
+  return inv;
+}
+
+// ── Meta parser ───────────────────────────────────────────────────────────────
+function parseMeta(text, fname) {
+  const inv = { plataforma:'Meta', subcategoria:'', lineas:[], costoMediosTotal:0, techFeeTotal:0 };
+  const nm = text.match(/Invoice #:\s*(\d+)/);
+  inv.numero = nm ? nm[1] : fname.replace('.pdf','');
+  const sm = text.match(/Subtotal:\s*([\d,]+\.\d{2})/);
+  inv.subtotal = sm ? pNum(sm[1]) : 0;
+
+  const advSet = new Set();
+  const lines = text.split('\n');
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i].trim();
+    const m = line.match(/^(\d+)\s+(.+?)\s+([-\d,]+\.\d{2})\s*$/);
+    if (m) {
+      let campaign = m[2].trim();
+      const amount = pNum(m[3]);
+      i++;
+      // Collect wrapped campaign name lines
+      while (i < lines.length) {
+        const nxt = lines[i].trim();
+        if (!nxt) { i++; continue; }
+        if (/^\d+\s/.test(nxt)) break;
+        if (/^(Subtotal|Total|Meta Platforms|Invoice|VAT|Freight)/i.test(nxt)) break;
+        if (/^[\d,]+\.\d{2}$/.test(nxt)) break;
+        campaign = campaign.replace(/-$/, '') + nxt;
+        i++;
+      }
+      campaign = campaign.replace(/\s+/g,' ').trim();
+      if (/subtotal|total|vat|freight/i.test(campaign)) continue;
+      const a = adv(campaign) || 'Desconocido';
+      if (a !== 'Desconocido') advSet.add(a);
+      inv.lineas.push({ formato:metaFmt(campaign), amount, advertiser:a, campaign });
+    } else { i++; }
+  }
+
+  inv.anunciante = advSet.size>1 ? 'MultiAnunciante' : (advSet.values().next().value || 'Desconocido');
+  inv.lineas.forEach(l => { if (l.advertiser==='Desconocido' && inv.anunciante!=='MultiAnunciante') l.advertiser = inv.anunciante; });
+
+  // IIBB 2%
+  inv.iibb = Math.round(inv.subtotal * 0.02 * 100) / 100;
+  inv.lineas.push({ formato:'IIBB Meta', amount:inv.iibb, advertiser:inv.anunciante, campaign:'IIBB 2% — Meta' });
+  return inv;
+}
+
+// ── TikTok parser ─────────────────────────────────────────────────────────────
+function parseTiktok(text, fname) {
+  const inv = { plataforma:'TikTok', subcategoria:'', lineas:[], costoMediosTotal:0, techFeeTotal:0, iibb:0 };
+  const nm = text.match(/Factura\s+(FCA[-\d]+)/) || text.match(/(FCA-\d{4}-\d+)/);
+  inv.numero = nm ? nm[1] : fname.replace('.pdf','');
+  const sm = text.match(/Subtotal\s+ARS\s+([\d.]+,\d{2})/);
+  inv.subtotal = sm ? pNum(sm[1]) : 0;
+  const am = text.match(/(Rapiditas|Oroweat|Artesano|Bimbo|Salmas|Fargo)_\d{4}/i);
+  inv.anunciante = am ? am[1].charAt(0).toUpperCase()+am[1].slice(1).toLowerCase() : 'Desconocido';
+  const cm = text.match(/(\w+_2026_BIM_[A-Z_]+ARG[^\s\n]+)/);
+  const campaign = cm ? cm[1].trim() : inv.anunciante;
+  const c = campaign.toUpperCase();
+  let fmt = 'Video';
+  if (c.includes('TOPVIEW')) fmt = 'TopView';
+  else if (c.includes('IN-FEED')||c.includes('IN_FEED')) fmt = 'In-Feed';
+  else if (c.includes('BRANDED')) fmt = 'Branded Effect';
+  inv.lineas = [{ formato:fmt, amount:inv.subtotal, advertiser:inv.anunciante, campaign }];
+  return inv;
+}
+
+// ── Spent XLSX reader ─────────────────────────────────────────────────────────
+async function loadSpent(file) {
+  if (!file) return {};
+  const ab = await file.arrayBuffer();
+  const wb = XLSX.read(ab, { type:'array' });
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1 });
+  const res = {};
+  for (let i=1; i<rows.length; i++) {
+    const [campaign, io,,amount] = rows[i];
+    if (!campaign || !io || typeof amount !== 'number') continue;
+    const a = adv(String(campaign));
+    if (!a) continue;
+    const fmt = ioFmt(String(io));
+    if (!res[a]) res[a] = [];
+    res[a].push({ campaign:String(campaign), formato:fmt, amount:Math.round(amount*100)/100, advertiser:a });
+  }
+  return res;
+}
+
+// ── Processing ────────────────────────────────────────────────────────────────
+async function processAll() {
+  const btn = document.getElementById('processBtn');
+  btn.disabled = true;
+  document.getElementById('progressCard').classList.remove('hidden');
+  document.getElementById('resultsCard').classList.add('hidden');
+  invoices = [];
+
+  setProgress(5, 'Cargando datos de Spent…');
+  const spent = await loadSpent(spentFile);
+
+  const total = pdfFiles.length;
+  for (let idx=0; idx<total; idx++) {
+    const file = pdfFiles[idx];
+    setProgress(10 + (idx/total)*70, `Procesando ${file.name}…`);
+    try {
+      const text = await pdfText(file);
+      let inv;
+      if (text.includes('Meta Platforms Ireland'))                       inv = parseMeta(text, file.name);
+      else if (/TikTok|IMS Argentina|Aleph/i.test(text.slice(0,600)))   inv = parseTiktok(text, file.name);
+      else if (/GOOGLE|Display.*Video.*360|Campaign Manager/i.test(text)) inv = parseGoogle(text, file.name);
+      else inv = { plataforma:'Desconocido', numero:file.name, anunciante:'?', subtotal:0, subcategoria:'', lineas:[], costoMediosTotal:0, techFeeTotal:0 };
+
+      // Enrich DV360 with Spent breakdown
+      if (inv.subcategoria==='DV360' && spent[inv.anunciante]) {
+        inv.lineas = spent[inv.anunciante];
+      }
+      invoices.push(inv);
+    } catch(e) {
+      console.error(file.name, e);
+      invoices.push({ plataforma:'Error', numero:file.name, anunciante:'?', subtotal:0, subcategoria:'', lineas:[], costoMediosTotal:0, techFeeTotal:0 });
+    }
+  }
+
+  setProgress(85, 'Generando Excel…');
+  excelBuf = await generateExcel(invoices);
+  setProgress(100, 'Completado');
+
+  // Update file list
+  const list = document.getElementById('fileList');
+  list.innerHTML = '';
+  invoices.forEach(inv => {
+    const plat = inv.plataforma.toLowerCase();
+    const bc = plat==='meta'?'meta':plat==='tiktok'?'tiktok':plat==='google'?'google':'error';
+    const sub = inv.subcategoria ? ` ${inv.subcategoria==='CM360'?'Adserver':inv.subcategoria}` : '';
+    const amt = inv.subtotal ? `ARS ${inv.subtotal.toLocaleString('es-AR',{minimumFractionDigits:2})}` : '';
+    list.appendChild(makeFileItem(bc, inv.plataforma+sub, `${inv.anunciante} — ${inv.numero}`, amt));
+  });
+  if (spentFile) list.appendChild(makeFileItem('spent','Spent',spentFile.name));
+
+  // Stats
+  const dv360  = invoices.filter(i=>i.subcategoria==='DV360').length;
+  const cm360  = invoices.filter(i=>i.subcategoria==='CM360').length;
+  const meta   = invoices.filter(i=>i.plataforma==='Meta').length;
+  const tiktok = invoices.filter(i=>i.plataforma==='TikTok').length;
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="stat"><div class="stat-n" style="color:#2d6a2d">${dv360+cm360}</div><div class="stat-l">Google (${dv360} DV360 / ${cm360} Adserver)</div></div>
+    <div class="stat"><div class="stat-n" style="color:#1a4a7a">${meta}</div><div class="stat-l">Meta</div></div>
+    <div class="stat"><div class="stat-n" style="color:#8a1a4a">${tiktok}</div><div class="stat-l">TikTok</div></div>`;
+
+  document.getElementById('resultsCard').classList.remove('hidden');
+  btn.disabled = false;
+}
+
+function setProgress(pct, txt) {
+  document.getElementById('progBar').style.width = pct+'%';
+  document.getElementById('progText').textContent = txt;
+}
+
+// ── Excel generation ──────────────────────────────────────────────────────────
+const EXL = {
+  HDR:'1F4E79', GOOGLE:'E2EFDA', META:'D6E4F0', TIKTOK:'FFD9E8',
+  SUB:'FFF2CC', TOT:'FCE4D6', SUBTEXT:'3A6E3A'
+};
+function fill(hex) { return { type:'pattern', pattern:'solid', fgColor:{argb:'FF'+hex} }; }
+function font(o={}) { return { name:'Calibri', size:11, ...o }; }
+function platFill(p) { return fill(p==='Google'?EXL.GOOGLE:p==='Meta'?EXL.META:p==='TikTok'?EXL.TIKTOK:'FFFFFF'); }
+const NF = '#,##0.00';
+
+async function generateExcel(invs) {
+  const wb = new ExcelJS.Workbook();
+
+  // ── Hoja 1 ───────────────────────────────────────────────────────────────────
+  const ws1 = wb.addWorksheet('Resumen por Plataforma');
+  ws1.addRow(['N° Factura','Plataforma','Subcategoría','Anunciante','Costo de Medios (ARS)','Tech Fee (ARS)','Subtotal (ARS)','IIBB Meta (ARS)']);
+  const h1 = ws1.getRow(1);
+  h1.eachCell(c => { c.fill=fill(EXL.HDR); c.font=font({bold:true,color:{argb:'FFFFFFFF'}}); c.alignment={horizontal:'center',vertical:'middle',wrapText:true}; });
+  h1.height = 28;
+  ws1.views = [{ state:'frozen', ySplit:1 }];
+
+  let grand = 0;
+  for (const plat of ['Google','Meta','TikTok']) {
+    const platInvs = invs.filter(i=>i.plataforma===plat);
+    if (!platInvs.length) continue;
+    let platTot = 0;
+    const pFill = platFill(plat);
+
+    for (const inv of platInvs) {
+      const sub = inv.subcategoria==='CM360'?'Adserver':(inv.subcategoria||'');
+      const row = ws1.addRow([inv.numero, plat, sub, inv.anunciante, inv.costoMediosTotal||null, inv.techFeeTotal||null, inv.subtotal, inv.iibb||null]);
+      row.eachCell({includeEmpty:true}, (c,n)=>{ if(n<=8) c.fill=pFill; if([5,6,7,8].includes(n)) c.numFmt=NF; });
+      platTot += inv.subtotal; grand += inv.subtotal;
+
+      // DV360 sub-rows
+      if (inv.subcategoria==='DV360' && inv.lineas?.length) {
+        for (const line of inv.lineas) {
+          const tf  = techFee(line.formato, line.amount);
+          const net = Math.round((line.amount - tf)*100)/100;
+          const sr = ws1.addRow(['','',`  ↳ ${line.formato}`,'',null,tf,net,null]);
+          sr.eachCell({includeEmpty:true},(c,n)=>{
+            if(n<=8) c.fill=pFill;
+            if(n===3) c.font=font({italic:true,color:{argb:'FF'+EXL.SUBTEXT}});
+            if([6,7].includes(n)){ c.numFmt=NF; c.font=font({italic:true}); }
+          });
+        }
+      }
+    }
+
+    const sr = ws1.addRow([`SUBTOTAL ${plat.toUpperCase()}`,'','','',null,null,platTot,null]);
+    sr.eachCell({includeEmpty:true},(c,n)=>{ if(n<=8){ c.fill=fill(EXL.SUB); c.font=font({bold:true}); } if(n===7) c.numFmt=NF; });
+  }
+
+  const tr = ws1.addRow(['TOTAL GENERAL','','','',null,null,grand,null]);
+  tr.eachCell({includeEmpty:true},(c,n)=>{ if(n<=8){ c.fill=fill(EXL.TOT); c.font=font({bold:true}); } if(n===7) c.numFmt=NF; });
+
+  [24,12,22,18,22,18,22,18].forEach((w,i)=>{ ws1.getColumn(i+1).width=w; });
+
+  // ── Hoja 2 ───────────────────────────────────────────────────────────────────
+  const ws2 = wb.addWorksheet('Detalle por Campaña');
+  ws2.addRow(['N° Factura','Plataforma','Anunciante','Campaña','Formato','Subtotal Línea (ARS)']);
+  const h2 = ws2.getRow(1);
+  h2.eachCell(c=>{ c.fill=fill(EXL.HDR); c.font=font({bold:true,color:{argb:'FFFFFFFF'}}); c.alignment={horizontal:'center',vertical:'middle',wrapText:true}; });
+  h2.height = 28;
+  ws2.views = [{ state:'frozen', ySplit:1 }];
+
+  for (const inv of invs) {
+    const pf = platFill(inv.plataforma);
+    for (const line of (inv.lineas||[])) {
+      const row = ws2.addRow([inv.numero, inv.plataforma, line.advertiser, line.campaign, line.formato, line.amount]);
+      row.eachCell({includeEmpty:true},(c,n)=>{ if(n<=6) c.fill=pf; if(n===6) c.numFmt=NF; });
+    }
+  }
+
+  [22,12,18,60,28,22].forEach((w,i)=>{ ws2.getColumn(i+1).width=w; });
+
+  return await wb.xlsx.writeBuffer();
+}
+
+function downloadExcel() {
+  if (!excelBuf) return;
+  const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const d = new Date();
+  const name = `Resumen_Facturas_${months[d.getMonth()]}_${d.getFullYear()}.xlsx`;
+  const blob = new Blob([excelBuf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=name; a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
