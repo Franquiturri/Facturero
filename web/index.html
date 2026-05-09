@@ -85,9 +85,12 @@ main { max-width: 920px; margin: 1.75rem auto; padding: 0 1rem; display: flex; f
 </head>
 <body>
 
-<header>
-  <h1>📊 Diferenciador de Facturas Publicitarias</h1>
-  <p>Google DV360 / CM360 · Meta · TikTok — Bimbo Argentina</p>
+<header style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+  <div>
+    <h1>📊 Diferenciador de Facturas Publicitarias</h1>
+    <p>Google DV360 / CM360 · Meta · TikTok — Bimbo Argentina</p>
+  </div>
+  <button onclick="showCache()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:.35rem .8rem;border-radius:6px;font-size:.75rem;cursor:pointer" title="Ver caché de anunciantes">🗄️ Caché</button>
 </header>
 
 <main>
@@ -151,6 +154,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let pdfFiles = [], spentFile = null, invoices = [], excelBuf = null;
+
+// ── Invoice advertiser cache (persisted in localStorage) ──────────────────────
+const CACHE_KEY = 'facturero_inv_cache';
+function cacheLoad() { try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}'); } catch { return {}; } }
+function cacheSave(map) { try { localStorage.setItem(CACHE_KEY, JSON.stringify({...cacheLoad(), ...map})); } catch {} }
+function cacheClear() { localStorage.removeItem(CACHE_KEY); alert('Caché borrado.'); }
 
 // ── File inputs ───────────────────────────────────────────────────────────────
 document.getElementById('pdfInput').onchange = e => { pdfFiles = [...e.target.files].filter(f => f.name.endsWith('.pdf')); renderFiles(); };
@@ -483,15 +492,24 @@ async function processAll() {
   }
 
   // Cross-reference Google Argentina invoices with their Google Ireland counterparts
+  // 1. Build map from this batch
   const refMap = {};
-  invoices.forEach(inv => { if (inv.numero && !inv.esArgentina && inv.anunciante !== 'Desconocido') refMap[inv.numero] = inv.anunciante; });
+  invoices.forEach(inv => { if (!inv.esArgentina && inv.numero && inv.anunciante !== 'Desconocido' && inv.anunciante !== 'MultiAnunciante') refMap[inv.numero] = inv.anunciante; });
+  // 2. Merge with persistent cache and save new entries
+  const cache = cacheLoad();
+  Object.assign(refMap, cache, refMap); // batch takes priority over cache
+  cacheSave(refMap);
+  // 3. Resolve FCA0011 advertisers
+  let cruces = 0;
   invoices.forEach(inv => {
     if (inv.esArgentina && inv.refNumero && refMap[inv.refNumero]) {
       const a = refMap[inv.refNumero];
       inv.anunciante = a;
       inv.lineas.forEach(l => l.advertiser = a);
+      cruces++;
     }
   });
+  console.log(`Cruce FCA0011: ${cruces} resueltos, ${Object.keys(refMap).length} entradas en caché`);
 
   setProgress(85, 'Generando Excel…');
   excelBuf = await generateExcel(invoices);
@@ -521,6 +539,15 @@ async function processAll() {
 
   document.getElementById('resultsCard').classList.remove('hidden');
   btn.disabled = false;
+}
+
+function showCache() {
+  const c = cacheLoad();
+  const entries = Object.entries(c);
+  if (!entries.length) { alert('Caché vacío. Procesá primero las facturas 5561* de Google Ireland.'); return; }
+  const lines = entries.map(([k,v]) => `${k} → ${v}`).join('\n');
+  const msg = `Caché: ${entries.length} facturas guardadas\n\n${lines}\n\n¿Borrar caché?`;
+  if (confirm(msg)) cacheClear();
 }
 
 function setProgress(pct, txt) {
