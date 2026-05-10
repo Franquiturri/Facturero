@@ -339,19 +339,32 @@ function parseGoogle(text, fname) {
   const sm = text.match(/Subtotal en ARS\s+ARS\s+([\d,]+\.\d{2})/);
   inv.subtotal = sm ? pNum(sm[1]) : 0;
 
-  // Advertiser — busca en campos estructurados primero, luego en todo el texto
+  // Advertiser — DV360 format: "- Anunciante:\n{Name}_ARG ID: ..."
+  // CM360 format: Anunciante: "{Name}" inline
   const advSet = new Set();
-  [...text.matchAll(/Anunciante:\s*"?([^",\n]{2,60})"?/g)].forEach(m => { const a=adv(m[1]); if(a) advSet.add(a); });
-  [...text.matchAll(/Advertiser:\s*"?([^",\n]{2,60})"?/gi)].forEach(m => { const a=adv(m[1]); if(a) advSet.add(a); });
-  // Fallback: busca el nombre del anunciante en cualquier línea del PDF
+  // 1. Multiline: "Anunciante:\n NextLine_ARG"
+  [...text.matchAll(/Anunciante:\s*\n\s*([^\n\r]+)/g)].forEach(m => {
+    const name = m[1].replace(/\s+ID:.*/, '').replace(/_ARG\b.*/i, '').trim();
+    const a = adv(name);
+    if (a) advSet.add(a);
+  });
+  // 2. Inline: Anunciante: "Name" or Anunciante: Name
+  [...text.matchAll(/Anunciante:\s+"?([^",\n]{2,50})"?/g)].forEach(m => {
+    const a = adv(m[1]);
+    if (a) advSet.add(a);
+  });
+  // 3. Fallback line-by-line, but exclude "Bimbo Argentina" (partner/agency name)
   if (advSet.size === 0) {
     for (const line of text.split('\n')) {
+      if (/bimbo argentina/i.test(line)) continue;
       const a = adv(line);
       if (a) advSet.add(a);
     }
   }
-  console.log(`[${fname}] advSet=`, [...advSet], '| subtotal=', inv.subtotal, '| sub=', inv.subcategoria);
-  inv.anunciante = advSet.size > 1 ? 'MultiAnunciante' : (advSet.values().next().value || 'Desconocido');
+  const brands = [...advSet];
+  inv.anunciante = brands.length === 0 ? 'Campaña desconocida' :
+                   brands.length === 1 ? brands[0] :
+                   brands.join(' + ');
 
   if (isDV360) {
     const cm = text.match(/Costo de medios[\s\S]{0,200}?(\d{1,3}(?:,\d{3})+\.\d{2})/);
