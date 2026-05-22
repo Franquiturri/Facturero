@@ -70,6 +70,8 @@ main { max-width: 920px; margin: 1.75rem auto; padding: 0 1rem; display: flex; f
 .btn-primary:disabled { opacity:.45; cursor:not-allowed; }
 .btn-success { background:#198754; color:#fff; }
 .btn-success:hover { background:#157347; }
+.btn-zip { background:#495057; color:#fff; }
+.btn-zip:hover { background:#343a40; }
 
 /* Progress */
 .prog-bar-bg { background:#e9ecef; border-radius:100px; height:7px; overflow:hidden; margin-bottom:.6rem; }
@@ -127,6 +129,7 @@ main { max-width: 920px; margin: 1.75rem auto; padding: 0 1rem; display: flex; f
   </div>
 
   <button class="btn btn-primary" id="processBtn" disabled onclick="processAll()">⚙️ Procesar Facturas</button>
+  <button class="btn btn-zip hidden" id="zipBtn" onclick="downloadZip()">📦 Descargar Facturas Procesadas</button>
 
   <!-- Progress -->
   <div class="card hidden" id="progressCard">
@@ -148,6 +151,7 @@ main { max-width: 920px; margin: 1.75rem auto; padding: 0 1rem; display: flex; f
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 <script>
 // ── PDF.js worker ─────────────────────────────────────────────────────────────
@@ -559,6 +563,7 @@ async function processAll() {
       else if (/GOOGLE|Display.*Video.*360|Campaign Manager/i.test(text))                    inv = parseGoogle(text, file.name);
       else inv = { plataforma:'Desconocido', numero:file.name, anunciante:'?', subtotal:0, subcategoria:'', lineas:[], costoMediosTotal:0, techFeeTotal:0 };
 
+      inv.file = file;
       // Enrich DV360 with Spent breakdown
       if (inv.subcategoria==='DV360' && !inv.esArgentina && spent[inv.anunciante]) {
         inv.lineas = spent[inv.anunciante];
@@ -618,6 +623,7 @@ async function processAll() {
     ${uber ? `<div class="stat"><div class="stat-n" style="color:#1a4a2a">${uber}</div><div class="stat-l">Uber Ads</div></div>` : ''}`;
 
   document.getElementById('resultsCard').classList.remove('hidden');
+  document.getElementById('zipBtn').classList.remove('hidden');
   btn.disabled = false;
 }
 
@@ -712,6 +718,31 @@ async function generateExcel(invs) {
   [22,12,18,60,28,22].forEach((w,i)=>{ ws2.getColumn(i+1).width=w; });
 
   return await wb.xlsx.writeBuffer();
+}
+
+async function downloadZip() {
+  if (!invoices.length) return;
+  const btn = document.getElementById('zipBtn');
+  btn.disabled = true; btn.textContent = '⏳ Generando ZIP…';
+
+  const zip = new JSZip();
+  for (const inv of invoices) {
+    if (!inv.file) continue;
+    const sub = inv.subcategoria && inv.subcategoria !== 'CM360'
+      ? `_${inv.subcategoria}`
+      : inv.subcategoria === 'CM360' ? '_CM360' : '';
+    const anv = (inv.anunciante || 'Desconocido').replace(/[<>:"/\\|?*+]/g, '_');
+    const num = String(inv.numero).replace(/[<>:"/\\|?*]/g, '-');
+    const filename = `${num}_${inv.plataforma}${sub}_${anv}.pdf`;
+    zip.file(filename, inv.file);
+  }
+
+  const blob = await zip.generateAsync({ type:'blob', compression:'STORE' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'Facturas_Procesadas.zip'; a.click();
+  URL.revokeObjectURL(url);
+  btn.disabled = false; btn.textContent = '📦 Descargar Facturas Procesadas';
 }
 
 function downloadExcel() {
