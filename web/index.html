@@ -533,17 +533,19 @@ function parseMeli(text, fname) {
 function parseTiktok(text, fname) {
   const inv = { plataforma:'TikTok', subcategoria:'', lineas:[], costoMediosTotal:0, techFeeTotal:0, iibb:0 };
   const nm = text.match(/Factura\s+(FCA[-\d]+)/) || text.match(/(FCA-\d{4}-\d+)/);
-  inv.numero = nm ? nm[1] : fname.replace('.pdf','');
+  inv.numero = nm ? nm[1] : fname.replace(/\.pdf$/i,'');
   const sm = text.match(/Subtotal\s+ARS\s+([\d.]+,\d{2})/);
   inv.subtotal = sm ? pNum(sm[1]) : 0;
-  const am = text.match(/(Rapiditas|Oroweat|Artesano|Bimbo|Salmas|Fargo)_\d{4}/i);
-  inv.anunciante = am ? am[1].charAt(0).toUpperCase()+am[1].slice(1).toLowerCase() : 'Desconocido';
-  const cm = text.match(/(\w+_2026_BIM_[A-Z_]+ARG[^\s\n]+)/);
-  const campaign = cm ? cm[1].trim() : inv.anunciante;
-  const c = campaign.toUpperCase();
-  let fmt = 'Video';
+  // Anunciante: campo estructurado primero, luego adv() en todo el texto
+  const advBlock = text.match(/Anunciante[\s\S]{0,200}?(?=Orden de Compra)/i);
+  inv.anunciante = adv(advBlock ? advBlock[0] : text) || 'Desconocido';
+  // Campaña: buscar nombre de campaña TikTok en el texto del ítem
+  const cm = text.match(/TikTok[\w_\-.|]+/i);
+  const campaign = cm ? cm[0].trim() : inv.anunciante;
+  const c = text.toUpperCase();
+  let fmt = 'TikTok Video';
   if (c.includes('TOPVIEW')) fmt = 'TopView';
-  else if (c.includes('IN-FEED')||c.includes('IN_FEED')) fmt = 'In-Feed';
+  else if (c.includes('IN-FEED') || c.includes('IN_FEED')) fmt = 'In-Feed';
   else if (c.includes('BRANDED')) fmt = 'Branded Effect';
   inv.lineas = [{ formato:fmt, amount:inv.subtotal, advertiser:inv.anunciante, campaign }];
   return inv;
@@ -605,6 +607,23 @@ async function processAll() {
     }
   }
 
+  // Detect and remove duplicate invoice numbers
+  const seenNums = new Map();
+  const dupeNums = new Set();
+  invoices.forEach(inv => {
+    if (seenNums.has(inv.numero)) dupeNums.add(inv.numero);
+    else seenNums.set(inv.numero, true);
+  });
+  if (dupeNums.size) {
+    const seen2 = new Set();
+    invoices = invoices.filter(inv => {
+      if (!dupeNums.has(inv.numero)) return true;
+      if (!seen2.has(inv.numero)) { seen2.add(inv.numero); return true; }
+      return false; // drop the duplicate
+    });
+    console.warn('Facturas duplicadas eliminadas:', [...dupeNums].join(', '));
+  }
+
   // Enrich Google Argentina invoices with advertiser from cache or same batch
   const refMap = {};
   invoices.forEach(inv => {
@@ -656,6 +675,12 @@ async function processAll() {
   document.getElementById('zipBtn').classList.remove('hidden');
   document.getElementById('previewCard').classList.remove('hidden');
   renderPreview(invoices);
+  if (dupeNums.size) {
+    const warn = document.createElement('div');
+    warn.style.cssText = 'background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:.8rem 1rem;font-size:.83rem;color:#856404;margin-top:.5rem';
+    warn.innerHTML = `⚠️ <b>Facturas duplicadas ignoradas (${dupeNums.size}):</b> ${[...dupeNums].join(', ')}`;
+    document.getElementById('resultsCard').appendChild(warn);
+  }
   btn.disabled = false;
 }
 
