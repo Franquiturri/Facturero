@@ -7,7 +7,7 @@
 <style>
 :root {
   --primary: #1F4E79; --primary-light: #2E75B6;
-  --google: #E2EFDA; --meta: #D6E4F0; --tiktok: #FFD9E8; --meli: #FFF9C4;
+  --google: #E2EFDA; --meta: #D6E4F0; --tiktok: #FFD9E8; --meli: #FFF9C4; --uber: #E8F5E9;
   --subtotal-bg: #FFF2CC; --total-bg: #FCE4D6;
   --bg: #f0f4f8; --card: #fff; --border: #e0e0e0;
   --text: #222; --text-muted: #666;
@@ -51,6 +51,7 @@ main { max-width: 920px; margin: 1.75rem auto; padding: 0 1rem; display: flex; f
 .badge.meta    { background:var(--meta);    color:#1a4a7a; }
 .badge.tiktok  { background:var(--tiktok);  color:#8a1a4a; }
 .badge.meli    { background:var(--meli);     color:#7a5c00; }
+.badge.uber    { background:var(--uber);     color:#1a4a2a; }
 .badge.spent   { background:#fff3cd;         color:#856404; }
 .badge.pending { background:#f0f0f0;         color:#666; }
 .badge.error   { background:#fde8e8;         color:#9b1c1c; }
@@ -432,6 +433,37 @@ function parseMeta(text, fname) {
   return inv;
 }
 
+// ── Uber Ads parser ───────────────────────────────────────────────────────────
+function parseUber(text, fname) {
+  const inv = { plataforma:'Uber', subcategoria:'', lineas:[], costoMediosTotal:0, techFeeTotal:0, iibb:0 };
+
+  // Invoice number: "Factura FCA-0004-00044617"
+  const nm = text.match(/Factura\s+(FCA-[\d-]+)/i);
+  inv.numero = nm ? nm[1] : fname.replace(/\.pdf$/i,'');
+
+  // Advertiser from "Anunciante COMPAÑIA DE ALIMENTOS FARGO SA" (may span 2 lines)
+  const advBlock = text.match(/Anunciante\s+([\s\S]{0,80}?)(?=Orden de Compra|Divisa|Id\. del pago)/i);
+  inv.anunciante = advBlock ? (adv(advBlock[1]) || 'Desconocido') : (adv(text) || 'Desconocido');
+
+  // Campaign: first "Uber_..." token in item description
+  const campMatch = text.match(/Uber[_\s]\S+/i);
+  const campaign = campMatch ? campMatch[0].trim() : 'Uber';
+
+  // Subtotal: "Subtotal ARS 7.499.985,00"
+  const sm = text.match(/Subtotal\s+ARS\s+([\d.]+,\d{2})/i);
+  inv.subtotal = sm ? pNum(sm[1]) : 0;
+  inv.costoMediosTotal = inv.subtotal;
+
+  // Format from campaign name
+  const cu = campaign.toUpperCase();
+  let fmt = 'Uber Programático';
+  if (cu.includes('VIDEO'))  fmt = 'Uber Video';
+  if (cu.includes('BANNER') || cu.includes('DISPLAY')) fmt = 'Uber Display';
+
+  inv.lineas = [{ formato: fmt, amount: inv.subtotal, advertiser: inv.anunciante, campaign }];
+  return inv;
+}
+
 // ── Mercado Ads parser ────────────────────────────────────────────────────────
 function parseMeli(text, fname) {
   const inv = { plataforma:'MercadoAds', subcategoria:'', lineas:[], costoMediosTotal:0, techFeeTotal:0, iibb:0 };
@@ -520,10 +552,11 @@ async function processAll() {
     try {
       const text = await pdfText(file);
       let inv;
-      if (text.includes('Meta Platforms Ireland'))                        inv = parseMeta(text, file.name);
-      else if (/TikTok|IMS Argentina|Aleph/i.test(text.slice(0,600)))    inv = parseTiktok(text, file.name);
-      else if (/MercadoLibre/i.test(text.slice(0,600)))                  inv = parseMeli(text, file.name);
-      else if (/GOOGLE|Display.*Video.*360|Campaign Manager/i.test(text)) inv = parseGoogle(text, file.name);
+      if (text.includes('Meta Platforms Ireland'))                                              inv = parseMeta(text, file.name);
+      else if (/IMS Argentina/i.test(text.slice(0,800)) && /\bUber\b/i.test(text))           inv = parseUber(text, file.name);
+      else if (/TikTok|IMS Argentina|Aleph/i.test(text.slice(0,600)))                        inv = parseTiktok(text, file.name);
+      else if (/MercadoLibre/i.test(text.slice(0,600)))                                      inv = parseMeli(text, file.name);
+      else if (/GOOGLE|Display.*Video.*360|Campaign Manager/i.test(text))                    inv = parseGoogle(text, file.name);
       else inv = { plataforma:'Desconocido', numero:file.name, anunciante:'?', subtotal:0, subcategoria:'', lineas:[], costoMediosTotal:0, techFeeTotal:0 };
 
       // Enrich DV360 with Spent breakdown
@@ -563,7 +596,7 @@ async function processAll() {
   list.innerHTML = '';
   invoices.forEach(inv => {
     const plat = inv.plataforma.toLowerCase();
-    const bc = plat==='meta'?'meta':plat==='tiktok'?'tiktok':plat==='google'?'google':plat==='mercadoads'?'meli':'error';
+    const bc = plat==='meta'?'meta':plat==='tiktok'?'tiktok':plat==='google'?'google':plat==='mercadoads'?'meli':plat==='uber'?'uber':'error';
     const sub = inv.subcategoria ? ` ${inv.subcategoria==='CM360'?'Adserver':inv.subcategoria}` : '';
     const amt = inv.subtotal ? `ARS ${inv.subtotal.toLocaleString('es-AR',{minimumFractionDigits:2})}` : '';
     list.appendChild(makeFileItem(bc, inv.plataforma+sub, `${inv.anunciante} — ${inv.numero}`, amt));
@@ -576,11 +609,13 @@ async function processAll() {
   const meta   = invoices.filter(i=>i.plataforma==='Meta').length;
   const tiktok = invoices.filter(i=>i.plataforma==='TikTok').length;
   const meli   = invoices.filter(i=>i.plataforma==='MercadoAds').length;
+  const uber   = invoices.filter(i=>i.plataforma==='Uber').length;
   document.getElementById('statsGrid').innerHTML = `
     <div class="stat"><div class="stat-n" style="color:#2d6a2d">${dv360+cm360}</div><div class="stat-l">Google (${dv360} DV360 / ${cm360} Adserver)</div></div>
     <div class="stat"><div class="stat-n" style="color:#1a4a7a">${meta}</div><div class="stat-l">Meta</div></div>
     <div class="stat"><div class="stat-n" style="color:#8a1a4a">${tiktok}</div><div class="stat-l">TikTok</div></div>
-    ${meli ? `<div class="stat"><div class="stat-n" style="color:#7a5c00">${meli}</div><div class="stat-l">Mercado Ads</div></div>` : ''}`;
+    ${meli ? `<div class="stat"><div class="stat-n" style="color:#7a5c00">${meli}</div><div class="stat-l">Mercado Ads</div></div>` : ''}
+    ${uber ? `<div class="stat"><div class="stat-n" style="color:#1a4a2a">${uber}</div><div class="stat-l">Uber Ads</div></div>` : ''}`;
 
   document.getElementById('resultsCard').classList.remove('hidden');
   btn.disabled = false;
@@ -602,12 +637,12 @@ function setProgress(pct, txt) {
 
 // ── Excel generation ──────────────────────────────────────────────────────────
 const EXL = {
-  HDR:'1F4E79', GOOGLE:'E2EFDA', META:'D6E4F0', TIKTOK:'FFD9E8', MELI:'FFF9C4',
+  HDR:'1F4E79', GOOGLE:'E2EFDA', META:'D6E4F0', TIKTOK:'FFD9E8', MELI:'FFF9C4', UBER:'E8F5E9',
   SUB:'FFF2CC', TOT:'FCE4D6', SUBTEXT:'3A6E3A'
 };
 function fill(hex) { return { type:'pattern', pattern:'solid', fgColor:{argb:'FF'+hex} }; }
 function font(o={}) { return { name:'Calibri', size:11, ...o }; }
-function platFill(p) { return fill(p==='Google'?EXL.GOOGLE:p==='Meta'?EXL.META:p==='TikTok'?EXL.TIKTOK:p==='MercadoAds'?EXL.MELI:'FFFFFF'); }
+function platFill(p) { return fill(p==='Google'?EXL.GOOGLE:p==='Meta'?EXL.META:p==='TikTok'?EXL.TIKTOK:p==='MercadoAds'?EXL.MELI:p==='Uber'?EXL.UBER:'FFFFFF'); }
 const NF = '#,##0.00';
 
 async function generateExcel(invs) {
@@ -622,7 +657,7 @@ async function generateExcel(invs) {
   ws1.views = [{ state:'frozen', ySplit:1 }];
 
   let grand = 0;
-  for (const plat of ['Google','Meta','TikTok','MercadoAds']) {
+  for (const plat of ['Google','Meta','TikTok','MercadoAds','Uber']) {
     const platInvs = invs.filter(i=>i.plataforma===plat);
     if (!platInvs.length) continue;
     let platTot = 0;
