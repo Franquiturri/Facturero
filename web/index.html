@@ -445,9 +445,9 @@ function parseUber(text, fname) {
   const nm = text.match(/Factura\s+(FCA-[\d-]+)/i);
   inv.numero = nm ? nm[1] : fname.replace(/\.pdf$/i,'');
 
-  // Advertiser from "Anunciante COMPAÑIA DE ALIMENTOS FARGO SA" (may span 2 lines)
-  const advBlock = text.match(/Anunciante\s+([\s\S]{0,80}?)(?=Orden de Compra|Divisa|Id\. del pago)/i);
-  inv.anunciante = advBlock ? (adv(advBlock[1]) || 'Desconocido') : (adv(text) || 'Desconocido');
+  // Advertiser: capture everything between "Anunciante" and "Orden de Compra" (spans 2 lines)
+  const advBlock = text.match(/Anunciante[\s\S]{0,200}?(?=Orden de Compra)/i);
+  inv.anunciante = adv(advBlock ? advBlock[0] : text) || 'Desconocido';
 
   // Campaign: first "Uber_..." token in item description
   const campMatch = text.match(/Uber[_\s]\S+/i);
