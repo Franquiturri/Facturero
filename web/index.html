@@ -154,6 +154,15 @@ main { max-width: 920px; margin: 1.75rem auto; padding: 0 1rem; display: flex; f
     <p class="prog-text" id="progText">Iniciando…</p>
   </div>
 
+  <!-- Results -->
+  <div class="card hidden" id="resultsCard">
+    <h2>✅ Procesamiento completado</h2>
+    <div style="margin-bottom:1.1rem;">
+      <button class="btn btn-success" onclick="downloadExcel()">⬇️ Descargar Resumen Excel</button>
+    </div>
+    <div class="stats" id="statsGrid"></div>
+  </div>
+
   <!-- Preview table -->
   <div class="card hidden" id="previewCard">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.9rem;flex-wrap:wrap;gap:.5rem">
@@ -166,15 +175,6 @@ main { max-width: 920px; margin: 1.75rem auto; padding: 0 1rem; display: flex; f
     <div style="overflow-x:auto">
       <table class="prev-table" id="previewTable"></table>
     </div>
-  </div>
-
-  <!-- Results -->
-  <div class="card hidden" id="resultsCard">
-    <h2>✅ Procesamiento completado</h2>
-    <div style="margin-bottom:1.1rem;">
-      <button class="btn btn-success" onclick="downloadExcel()">⬇️ Descargar Resumen Excel</button>
-    </div>
-    <div class="stats" id="statsGrid"></div>
   </div>
 </main>
 
