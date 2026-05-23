@@ -111,7 +111,7 @@ main { max-width: 920px; margin: 1.75rem auto; padding: 0 1rem; display: flex; f
     <h1>📊 Diferenciador de Facturas Publicitarias</h1>
     <p>Google DV360 / CM360 · Meta · TikTok — Bimbo Argentina</p>
   </div>
-  <button onclick="showCache()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:.35rem .8rem;border-radius:6px;font-size:.75rem;cursor:pointer" title="Ver caché de anunciantes">🗄️ Caché</button>
+  <button onclick="easterEgg()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:.35rem .8rem;border-radius:6px;font-size:.75rem;cursor:pointer" title="Caché">🗄️ Caché</button>
 </header>
 
 <main>
@@ -775,13 +775,18 @@ function renderPreview(invs) {
   }
 }
 
-function showCache() {
-  const c = cacheLoad();
-  const entries = Object.entries(c);
-  if (!entries.length) { alert('Caché vacío. Procesá primero las facturas 5561* de Google Ireland.'); return; }
-  const lines = entries.map(([k,v]) => `${k} → ${v}`).join('\n');
-  const msg = `Caché: ${entries.length} facturas guardadas\n\n${lines}\n\n¿Borrar caché?`;
-  if (confirm(msg)) cacheClear();
+function easterEgg() {
+  const links = [
+    'https://youtu.be/cPCLFtxpadE?si=0BJJxHH0LnbxLI5',
+    'https://youtu.be/FhgFtXESdPk?si=t_pEHDhGbQ8DPkQA',
+    'https://youtu.be/170sceOWWXc?si=wXR_1iV8pRYHur41',
+    'https://youtu.be/wCDIYvFmgW8?si=64BJ8v2OxVIQrSyd',
+    'https://youtu.be/9RHFFeQ2tu4?si=52Jzwy4qGY_RlTMx',
+    'https://youtu.be/qRAJowgHqxA?si=g4PuIdxkvVksRiF8',
+    'https://www.youtube.com/watch?v=0Y4V9BGP43U',
+    'https://www.youtube.com/watch?v=jGJQl-s9i9c',
+  ];
+  window.open(links[Math.floor(Math.random() * links.length)], '_blank');
 }
 
 function setProgress(pct, txt) {
