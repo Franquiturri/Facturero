@@ -387,11 +387,15 @@ function parseGoogle(text, fname) {
     const a = adv(name);
     if (a) advSet.add(a);
   });
-  // 2. Inline: Anunciante: "Name" or Anunciante: Name
-  [...text.matchAll(/Anunciante:\s+"?([^",\n]{2,50})"?/g)].forEach(m => {
-    const a = adv(m[1]);
-    if (a) advSet.add(a);
-  });
+  // 2. Inline: Anunciante: "Name" or Anunciante: Name (CM360 / fallback — pattern 1
+  // already covers DV360, and re-running this on the same "Anunciante:" occurrences
+  // can grab a truncated wrapped name and wrongly add a second advertiser)
+  if (advSet.size === 0) {
+    [...text.matchAll(/Anunciante:\s+"?([^",\n]{2,50})"?/g)].forEach(m => {
+      const a = adv(m[1]);
+      if (a) advSet.add(a);
+    });
+  }
   // 3. Fallback line-by-line, but exclude "Bimbo Argentina" (partner/agency name)
   if (advSet.size === 0) {
     for (const line of text.split('\n')) {
