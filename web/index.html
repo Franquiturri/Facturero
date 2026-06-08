@@ -548,7 +548,7 @@ function parseTiktok(text, fname) {
   // (ej. "..._Artesano_2026_BIM_ART_..."); el campo "Anunciante" es la razón social
   // del cliente (ej. "BIMBO DE ARGENTINA S.A.") y tapa la marca real cuando el
   // cliente y el producto no coinciden (Artesano es una línea de Bimbo)
-  const brandMatch = text.match(/_([A-Za-zÀ-ÿ]+)_2026_/);
+  const brandMatch = text.match(/_([A-Za-zÀ-ÿ]+_2026_\w+)/);
   const advBlock = text.match(/Anunciante[\s\S]{0,200}?(?=Orden de Compra)/i);
   inv.anunciante = (brandMatch && adv(brandMatch[1])) || (advBlock && adv(advBlock[0])) || 'Desconocido';
   const campaign = cm ? cm[0].trim() : inv.anunciante;

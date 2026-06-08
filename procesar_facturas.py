@@ -375,15 +375,18 @@ def parse_tiktok(pdf_path: Path) -> dict:
     m = re.search(r"Subtotal\s+ARS\s+([\d.]+,\d{2})", text)
     inv["subtotal"] = parse_num(m.group(1)) if m else 0.0
 
-    # Advertiser: from campaign name (more reliable than "Anunciante" field)
-    m = re.search(r"(Rapiditas|Oroweat|Artesano|Bimbo|Salmas|Fargo)_\d{4}", text, re.IGNORECASE)
-    inv["anunciante"] = m.group(1).capitalize() if m else "Desconocido"
-
     # Campaign name
     m = re.search(r"(\w+_2026_BIM_[A-Z_]+ARG[^\s\n]+)", text)
     if not m:
         m = re.search(r"(\w+_2026_[^\n]+)", text)
-    campaign = " ".join(m.group(1).split()) if m else inv["anunciante"]
+    campaign = " ".join(m.group(1).split()) if m else ""
+
+    # Advertiser: derive from the campaign's brand code (e.g. _FAR_/FRGP → Fargo)
+    # via advertiser_from(), which checks brand codes before the literal "Bimbo"
+    # prefix that precedes them in names like "Bimbo_2026_BIM_FAR_FRGP_ARG_..."
+    inv["anunciante"] = advertiser_from(campaign) or advertiser_from(text) or "Desconocido"
+
+    campaign = campaign or inv["anunciante"]
     fmt = tiktok_format(campaign)
 
     inv["lineas"] = [{"campaign": campaign, "formato": fmt, "amount": inv["subtotal"], "advertiser": inv["anunciante"]}]
