@@ -542,11 +542,13 @@ function parseTiktok(text, fname) {
   inv.numero = nm ? nm[1] : fname.replace(/\.pdf$/i,'');
   const sm = text.match(/Subtotal\s+ARS\s+([\d.]+,\d{2})/);
   inv.subtotal = sm ? pNum(sm[1]) : 0;
-  // Anunciante: campo estructurado primero, luego adv() en todo el texto
-  const advBlock = text.match(/Anunciante[\s\S]{0,200}?(?=Orden de Compra)/i);
-  inv.anunciante = adv(advBlock ? advBlock[0] : text) || 'Desconocido';
   // Campaña: buscar nombre de campaña TikTok en el texto del ítem
   const cm = text.match(/TikTok[\w_\-.|]+/i);
+  // Anunciante: la marca real vive en el nombre de campaña (ej. "..._Artesano_2026_BIM_ART_...");
+  // el campo "Anunciante" es la razón social del cliente (ej. "BIMBO DE ARGENTINA S.A.") y
+  // tapa la marca real cuando el cliente y el producto no coinciden (Artesano es de Bimbo)
+  const advBlock = text.match(/Anunciante[\s\S]{0,200}?(?=Orden de Compra)/i);
+  inv.anunciante = (cm && adv(cm[0])) || (advBlock && adv(advBlock[0])) || 'Desconocido';
   const campaign = cm ? cm[0].trim() : inv.anunciante;
   const c = text.toUpperCase();
   let fmt = 'TikTok Video';
