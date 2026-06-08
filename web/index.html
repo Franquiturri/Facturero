@@ -379,9 +379,11 @@ function parseGoogle(text, fname) {
   // Advertiser — DV360 format: "- Anunciante:\n{Name}_ARG ID: ..."
   // CM360 format: Anunciante: "{Name}" inline
   const advSet = new Set();
-  // 1. Multiline: "Anunciante:\n NextLine_ARG"
-  [...text.matchAll(/Anunciante:\s*\n\s*([^\n\r]+)/g)].forEach(m => {
-    const name = m[1].replace(/\s+ID:.*/, '').replace(/_ARG\b.*/i, '').trim();
+  // 1. DV360: "Anunciante: {Name}_ARG ID: ..." — the name can wrap mid-word across a
+  // line break (e.g. "Bimbo-\nZenissimo_ARG"), so capture up to "ID:" tolerating
+  // newlines, then de-hyphenate and collapse whitespace before reconstructing it.
+  [...text.matchAll(/Anunciante:\s*([^"]{2,80}?)\s*ID:\s*\d/g)].forEach(m => {
+    const name = m[1].replace(/-\s*\n\s*/g, '').replace(/\s+/g, '');
     const a = adv(name);
     if (a) advSet.add(a);
   });
